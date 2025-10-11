@@ -1,0 +1,45 @@
+{
+  "name": "dearbabymcp",
+  "version": "1.0.0",
+  "description": "Stand up a dedicated MCP server that connects Dear Baby’s ecosystem to ChatGPT, starting with the Solid Start recipe experience and expanding later to baby tracking and personalized guidance.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server/index.ts",
+    "build:components": "node scripts/build-components.mjs",
+    "build": "npm run build:components && tsc",
+    "start": "node dist/server/index.js",
+    "test": "echo \"No tests configured\" && exit 0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JupitLunar/DearBabyMCP.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/JupitLunar/DearBabyMCP/issues"
+  },
+  "homepage": "https://github.com/JupitLunar/DearBabyMCP#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "axios": "^1.12.2",
+    "dotenv": "^17.2.3",
+    "pino": "^10.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.1",
+    "esbuild": "^0.25.10",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
