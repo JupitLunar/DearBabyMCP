@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -35,6 +34,20 @@ async function bootstrap() {
   await server.connect(transport);
 
   const httpServer = createServer((req, res) => {
+    // Basic CORS to support Inspector "Direct" connections and browser-based tools
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Accept, mcp-session-id",
+    );
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+
+    if (req.method === "OPTIONS") {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+
     transport.handleRequest(req, res).catch((error) => {
       logger.error({ err: error }, "Failed to handle HTTP request");
       if (!res.headersSent) {

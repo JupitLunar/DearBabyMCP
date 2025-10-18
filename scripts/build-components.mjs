@@ -12,13 +12,13 @@ async function main() {
 
   await build({
     entryPoints: {
-      "solidstart-recipes-carousel": resolve(
+      "baby-recipes-carousel-v4": resolve(
         __dirname,
-        "../src/components/widgets/solidstartRecipesCarousel.tsx",
+        "../src/components/widgets/recipeCarouselNew.tsx",
       ),
-      "solidstart-recipes-detail": resolve(
+      "baby-recipes-detail-v4": resolve(
         __dirname,
-        "../src/components/widgets/solidstartRecipeDetail.tsx",
+        "../src/components/widgets/recipeDetailNew.tsx",
       ),
     },
     bundle: true,
@@ -26,7 +26,7 @@ async function main() {
     target: "es2021",
     format: "esm",
     outdir,
-    sourcemap: true,
+    sourcemap: process.env.NODE_ENV !== "production",
     minify: process.env.NODE_ENV === "production",
     loader: {
       ".ts": "ts",

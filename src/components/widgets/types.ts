@@ -31,9 +31,12 @@ export type RecipeDetail = RecipeSummary & {
   source?: string;
   status?: string;
   dislikes_count?: number | null;
+  gallery?: string[];
 };
 
 export type RecipesToolOutput = {
+  summary?: string;
+  search_strategy?: string;
   params?: Record<string, unknown>;
   pagination?: {
     received: number;

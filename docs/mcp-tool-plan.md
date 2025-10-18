@@ -77,3 +77,13 @@ This document captures the end-to-end plan for exposing Dear Baby experiences th
 2. Scaffold MCP server and React widgets per roadmap.
 3. Validate end-to-end via Developer Mode and gather feedback.
 4. Decide on Phase 2 scope (food safety and allergen guide) based on MVP adoption.
+
+---
+
+## Daily To-Do (Oct 17)
+
+1. ✅ Sync updated pain-point dataset into Supabase (`npm run ingest:pain:en`) and verify `/api/ai-feed`.
+2. 🔄 Capture homepage screenshots after testimonial simplification; update marketing deck.
+3. 🔄 Draft `/pain-points` landing page wireframe highlighting top scenarios + AI CTA.
+4. 📝 Outline caregiver email drip (welcome + weekly “Top 3 questions”).
+5. 📊 Set up dashboard baseline: Supabase article reads, AI queries, search impressions.

@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/server/index.ts",
     "build:components": "node scripts/build-components.mjs",
-    "build": "npm run build:components && tsc",
+    "build": "NODE_ENV=production npm run build:components && tsc",
     "start": "node dist/server/index.js",
     "test": "echo \"No tests configured\" && exit 0"
   },

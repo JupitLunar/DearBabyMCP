@@ -6,6 +6,10 @@ import {
   SolidStartClient,
   type FeaturedRecipesParams,
 } from "../../integrations/solidstart/client";
+import {
+  SOLIDSTART_CAROUSEL_URI,
+  SOLIDSTART_DETAIL_URI,
+} from "../resources/solidstartResources";
 
 const AGE_GROUP_METADATA: Record<
   Recipe["age_group"],
@@ -148,7 +152,7 @@ export function registerSolidStartTools({
       _meta: {
         "openai/toolInvocation/invoking": "Fetching suitable recipes…",
         "openai/toolInvocation/invoked": "Recipe search complete.",
-        "openai/outputTemplate": "ui://solidstart/recipes-carousel.html",
+        "openai/outputTemplate": SOLIDSTART_CAROUSEL_URI,
         "openai/widgetAccessible": true,
         "openai/resultCanProduceWidget": true,
       },
@@ -175,38 +179,69 @@ export function registerSolidStartTools({
         "Calling Solid Start recipe search",
       );
 
-      const response = await client.listRecipes(params);
-
       const allergensToAvoid =
         input.allergens_to_avoid?.map((a) => a.toLowerCase()) ?? [];
 
-      const filtered = response.data.filter((recipe) =>
+      let response = await client.listRecipes(params);
+      let candidates = response.data;
+      let strategy: "exact" | "relaxed" | "featuredFallback" = "exact";
+
+      if (!candidates.length && (params.search_query || params.food_type)) {
+        const relaxedParams = {
+          age_group: params.age_group,
+          limit: params.limit,
+          lang: params.lang,
+        };
+        logger.debug(
+          {
+            tool: "solidstart.recipes.search",
+            relaxedParams,
+          },
+          "No matches found, retrying without query/meal filters",
+        );
+        response = await client.listRecipes(relaxedParams);
+        candidates = response.data;
+        strategy = "relaxed";
+      }
+
+      if (!candidates.length) {
+        const featured = await client.getFeaturedRecipes({
+          age_group: params.age_group,
+          limit: params.limit,
+          lang: params.lang,
+        });
+        logger.debug(
+          { tool: "solidstart.recipes.search", featuredCount: featured.data.length },
+          "Falling back to featured recipes",
+        );
+        candidates = featured.data;
+        strategy = "featuredFallback";
+      }
+
+      const filtered = candidates.filter((recipe) =>
         shouldIncludeRecipe(recipe, allergensToAvoid),
       );
 
-      const excludedDueToAllergen = response.data.length - filtered.length;
+      const excludedDueToAllergen = candidates.length - filtered.length;
 
       return {
-        content: [
-          {
-            type: "text",
-            text: buildSearchSummary({
-              total: filtered.length,
-              ageGroup,
-              mealType: input.meal_type,
-              query: input.query,
-              excludedDueToAllergen,
-            }),
-          },
-        ],
+        content: [],
         structuredContent: {
           params: {
             ...input,
             age_group: ageGroup,
             limit: params.limit,
           },
+          summary: buildSearchSummary({
+            total: filtered.length,
+            ageGroup,
+            mealType: input.meal_type,
+            query: input.query,
+            excludedDueToAllergen,
+            strategy,
+          }),
           pagination: {
-            received: response.data.length,
+            received: candidates.length,
             count: response.count,
             page: response.page,
             per_page: response.per_page,
@@ -214,6 +249,7 @@ export function registerSolidStartTools({
           },
           excluded_due_to_allergens: excludedDueToAllergen,
           recipes: filtered.map(toRecipeSummary),
+          search_strategy: strategy,
         },
       };
     },
@@ -229,7 +265,7 @@ export function registerSolidStartTools({
       _meta: {
         "openai/toolInvocation/invoking": "Loading featured recipes…",
         "openai/toolInvocation/invoked": "Featured recipes ready.",
-        "openai/outputTemplate": "ui://solidstart/recipes-carousel.html",
+        "openai/outputTemplate": SOLIDSTART_CAROUSEL_URI,
         "openai/widgetAccessible": true,
         "openai/resultCanProduceWidget": true,
       },
@@ -256,14 +292,7 @@ export function registerSolidStartTools({
       const response = await client.getFeaturedRecipes(params);
 
       return {
-        content: [
-          {
-            type: "text",
-            text: `Showing ${response.data.length} featured recipes${
-              ageGroup ? ` for ${AGE_GROUP_METADATA[ageGroup].label}` : ""
-            }.`,
-          },
-        ],
+        content: [],
         structuredContent: {
           params: {
             ...input,
@@ -286,7 +315,7 @@ export function registerSolidStartTools({
       _meta: {
         "openai/toolInvocation/invoking": "Opening recipe details…",
         "openai/toolInvocation/invoked": "Recipe details retrieved.",
-        "openai/outputTemplate": "ui://solidstart/recipe-detail.html",
+        "openai/outputTemplate": SOLIDSTART_DETAIL_URI,
         "openai/widgetAccessible": true,
         "openai/resultCanProduceWidget": true,
       },
@@ -308,12 +337,7 @@ export function registerSolidStartTools({
       });
 
       return {
-        content: [
-          {
-            type: "text",
-            text: `Loaded recipe “${recipe.display_name ?? recipe.name}”.`,
-          },
-        ],
+        content: [],
         structuredContent: {
           recipe: toRecipeDetail(recipe),
         },
@@ -444,12 +468,14 @@ function buildSearchSummary({
   mealType,
   query,
   excludedDueToAllergen,
+  strategy,
 }: {
   total: number;
   ageGroup?: Recipe["age_group"];
   mealType?: string;
   query?: string;
   excludedDueToAllergen: number;
+  strategy: "exact" | "relaxed" | "featuredFallback";
 }): string {
   const parts: string[] = [];
 
@@ -471,6 +497,12 @@ function buildSearchSummary({
     parts.push(
       `(${excludedDueToAllergen} filtered out because of allergen restrictions)`,
     );
+  }
+
+  if (strategy === "relaxed") {
+    parts.push("(结果来自放宽筛选)");
+  } else if (strategy === "featuredFallback") {
+    parts.push("(展示推荐食谱)");
   }
 
   return parts.join(" ").trim();

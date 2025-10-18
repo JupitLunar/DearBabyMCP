@@ -3,8 +3,12 @@ import { resolve } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Logger } from "../utils/logger";
 
-const CAROUSEL_BUNDLE = "solidstart-recipes-carousel.js";
-const DETAIL_BUNDLE = "solidstart-recipes-detail.js";
+const CAROUSEL_BUNDLE = "baby-recipes-carousel-v4.js";
+const DETAIL_BUNDLE = "baby-recipes-detail-v4.js";
+const timestamp = Date.now();
+const randomId = Math.random().toString(36).substring(2, 8);
+const CAROUSEL_URI = `ui://babyfood/recipes-carousel-v4-${timestamp}.html`;
+const DETAIL_URI = `ui://babyfood/recipes-detail-v4-${timestamp}.html`;
 
 function loadBundle(filename: string) {
   const fullPath = resolve(process.cwd(), "dist/components", filename);
@@ -21,11 +25,15 @@ function loadBundle(filename: string) {
 }
 
 function buildHtml(bundle: string, options: { title: string }): string {
+  const timestamp = Date.now();
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>${options.title}</title>
     <style>
       :root {
@@ -43,6 +51,7 @@ function buildHtml(bundle: string, options: { title: string }): string {
   <body>
     <div id="root"></div>
     <script type="module">
+      // Cache buster: ${timestamp}
       ${bundle}
     </script>
   </body>
@@ -62,8 +71,8 @@ export function registerSolidStartResources(
   });
 
   server.registerResource(
-    "solidstart.recipes.carousel",
-    "ui://solidstart/recipes-carousel.html",
+    "dearbaby.recipes.carousel",
+    CAROUSEL_URI,
     {
       title: "Solid Start Recipe Carousel",
       _meta: {
@@ -77,7 +86,7 @@ export function registerSolidStartResources(
       return {
         contents: [
           {
-            uri: "ui://solidstart/recipes-carousel.html",
+            uri: CAROUSEL_URI,
             mimeType: "text/html+skybridge",
             text: carouselHtml,
           },
@@ -87,8 +96,8 @@ export function registerSolidStartResources(
   );
 
   server.registerResource(
-    "solidstart.recipes.detail",
-    "ui://solidstart/recipe-detail.html",
+    "dearbaby.recipes.detail",
+    DETAIL_URI,
     {
       title: "Solid Start Recipe Detail",
       _meta: {
@@ -102,7 +111,7 @@ export function registerSolidStartResources(
       return {
         contents: [
           {
-            uri: "ui://solidstart/recipe-detail.html",
+            uri: DETAIL_URI,
             mimeType: "text/html+skybridge",
             text: detailHtml,
           },
@@ -111,3 +120,6 @@ export function registerSolidStartResources(
     },
   );
 }
+
+export const SOLIDSTART_CAROUSEL_URI = CAROUSEL_URI;
+export const SOLIDSTART_DETAIL_URI = DETAIL_URI;
