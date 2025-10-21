@@ -293,7 +293,12 @@ const RecipeCarouselV4: React.FC = () => {
               </button>
             </header>
 
-            <div style={detailBodyStyle}>
+            <div
+              style={{
+                ...detailBodyStyle,
+                maxHeight: isCompact ? undefined : "calc(100vh - 320px)",
+              }}
+            >
               <div style={detailContentLayoutStyle}>
                 <div style={detailMediaColumnStyle}>
                   <div style={detailGalleryStyle}>
@@ -647,20 +652,20 @@ const emptySubtitleStyle: React.CSSProperties = {
 const detailOverlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  backgroundColor: "rgba(15, 23, 42, 0.52)",
+  backgroundColor: "rgba(15, 23, 42, 0.48)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "28px 12px 96px",
+  padding: "24px 10px 150px",
   zIndex: 999999,
   backdropFilter: "blur(10px)",
   overflowY: "auto",
 };
 
 const detailCardStyle: React.CSSProperties = {
-  width: "min(900px, calc(100vw - 32px))",
-  maxHeight: "calc(100vh - 88px)",
-  minHeight: "min(84vh, 720px)",
+  width: "min(700px, calc(100vw - 48px))",
+  maxHeight: "calc(100vh - 220px)",
+  minHeight: "min(70vh, 520px)",
   overflow: "hidden",
   background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
   borderRadius: "22px",
@@ -670,7 +675,7 @@ const detailCardStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "20px",
-  margin: "0 auto",
+  margin: "0 auto 40px",
 };
 
 const detailHeaderStyle: React.CSSProperties = {
@@ -766,7 +771,7 @@ const heroImageWrapperStyle: React.CSSProperties = {
 const detailHeroImageStyle: React.CSSProperties = {
   width: "100%",
   height: "auto",
-  maxHeight: "680px",
+  maxHeight: "520px",
   objectFit: "contain",
   display: "block",
   borderRadius: "12px",
