@@ -29,6 +29,43 @@ const RecipeCarouselV4: React.FC = () => {
   const detailTitleId = useId();
   const detailDescriptionId = useId();
 
+  const [viewportWidth, setViewportWidth] = useState<number>(
+    typeof window !== "undefined" ? window.innerWidth : 1024,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const isCompact = viewportWidth < 960;
+
+  const detailContentLayoutStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: isCompact ? "column" : "row",
+    gap: isCompact ? "20px" : "28px",
+    alignItems: "stretch",
+  };
+
+  const detailMediaColumnStyle: React.CSSProperties = {
+    flex: isCompact ? "0 0 auto" : "0 0 48%",
+    width: isCompact ? "100%" : "48%",
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+  };
+
+  const detailInfoColumnStyle: React.CSSProperties = {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+  };
+
   useEffect(() => {
     if (typeof document === "undefined") {
       return undefined;
@@ -240,7 +277,6 @@ const RecipeCarouselV4: React.FC = () => {
                 <h2 id={detailTitleId} style={detailTitleStyle}>
                   ✅ {detail.display_name ?? detail.name}
                 </h2>
-                <p style={detailIdStyle}>Recipe ID: {detail.id}</p>
                 {detail.description ? (
                   <p id={detailDescriptionId} style={detailDescriptionStyle}>
                     {detail.description}
@@ -258,67 +294,73 @@ const RecipeCarouselV4: React.FC = () => {
             </header>
 
             <div style={detailBodyStyle}>
-              <div style={detailGalleryStyle}>
-                <div style={heroImageWrapperStyle}>
-                  {detail.image_url ? (
-                    <img
-                      src={detail.image_url}
-                      alt={detail.display_name}
-                      style={detailHeroImageStyle}
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  ) : (
-                    <div style={heroPlaceholderStyle}>No image</div>
-                  )}
-                </div>
-                {detail.gallery?.length ? (
-                  <div style={galleryStripStyle}>
-                    {detail.gallery.slice(0, 4).map((uri, index) => (
-                      <img
-                        key={index}
-                        src={uri}
-                        alt="recipe gallery"
-                        style={galleryThumbStyle}
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    ))}
+              <div style={detailContentLayoutStyle}>
+                <div style={detailMediaColumnStyle}>
+                  <div style={detailGalleryStyle}>
+                    <div style={heroImageWrapperStyle}>
+                      {detail.image_url ? (
+                        <img
+                          src={detail.image_url}
+                          alt={detail.display_name}
+                          style={detailHeroImageStyle}
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <div style={heroPlaceholderStyle}>No image</div>
+                      )}
+                    </div>
+                    {detail.gallery?.length ? (
+                      <div style={galleryStripStyle}>
+                        {detail.gallery.slice(0, 4).map((uri, index) => (
+                          <img
+                            key={index}
+                            src={uri}
+                            alt="recipe gallery"
+                            style={galleryThumbStyle}
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
+                </div>
 
-              <div style={detailMetaRowStyle}>
-                {detail.total_time_minutes ? (
-                  <span style={metaChipStyle}>⏱ {detail.total_time_minutes} min</span>
-                ) : null}
-                {detail.servings ? <span style={metaChipStyle}>🍽 {detail.servings} servings</span> : null}
-                {detail.difficulty_level ? (
-                  <span style={metaChipStyle}>⭐ {detail.difficulty_level}</span>
-                ) : null}
-              </div>
+                <div style={detailInfoColumnStyle}>
+                  <div style={detailMetaRowStyle}>
+                    {detail.total_time_minutes ? (
+                      <span style={metaChipStyle}>⏱ {detail.total_time_minutes} min</span>
+                    ) : null}
+                    {detail.servings ? <span style={metaChipStyle}>🍽 {detail.servings} servings</span> : null}
+                    {detail.difficulty_level ? (
+                      <span style={metaChipStyle}>⭐ {detail.difficulty_level}</span>
+                    ) : null}
+                  </div>
 
-              <section style={detailColumnsStyle}>
-                <article style={detailColumnStyle}>
-                  <h3 style={detailColumnTitleStyle}>Ingredients</h3>
-                  <ul style={detailListStyle}>
-                    {detail.ingredients.map((item, index) => (
-                      <li key={index}>{formatIngredient(item)}</li>
-                    ))}
-                  </ul>
-                </article>
-                <article style={detailColumnStyle}>
-                  <h3 style={detailColumnTitleStyle}>Instructions</h3>
-                  <ol style={detailOrderedListStyle}>
-                    {detail.instructions.map((step, index) => (
-                      <li key={index} style={detailStepItemStyle}>
-                        <span style={stepBadgeStyle}>{index + 1}</span>
-                        <span style={detailStepTextStyle}>{step}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </article>
-              </section>
+                  <section style={detailColumnsStyle}>
+                    <article style={detailColumnStyle}>
+                      <h3 style={detailColumnTitleStyle}>Ingredients</h3>
+                      <ul style={detailListStyle}>
+                        {detail.ingredients.map((item, index) => (
+                          <li key={index}>{formatIngredient(item)}</li>
+                        ))}
+                      </ul>
+                    </article>
+                    <article style={detailColumnStyle}>
+                      <h3 style={detailColumnTitleStyle}>Instructions</h3>
+                      <ol style={detailOrderedListStyle}>
+                        {detail.instructions.map((step, index) => (
+                          <li key={index} style={detailStepItemStyle}>
+                            <span style={stepBadgeStyle}>{index + 1}</span>
+                            <span style={detailStepTextStyle}>{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </article>
+                  </section>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -605,76 +647,69 @@ const emptySubtitleStyle: React.CSSProperties = {
 const detailOverlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  backgroundColor: "rgba(15, 23, 42, 0.65)",
+  backgroundColor: "rgba(15, 23, 42, 0.52)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "32px 20px",
+  padding: "28px 12px 96px",
   zIndex: 999999,
   backdropFilter: "blur(10px)",
   overflowY: "auto",
 };
 
 const detailCardStyle: React.CSSProperties = {
-  width: "min(840px, calc(100vw - 64px))",
-  maxHeight: "min(88vh, 900px)",
-  minHeight: "min(80vh, 680px)",
+  width: "min(900px, calc(100vw - 32px))",
+  maxHeight: "calc(100vh - 88px)",
+  minHeight: "min(84vh, 720px)",
   overflow: "hidden",
   background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-  borderRadius: "24px",
+  borderRadius: "22px",
   border: `1px solid rgba(226, 232, 240, 0.8)` ,
-  boxShadow: "0 28px 60px rgba(15,23,42,0.22)",
-  padding: "32px",
+  boxShadow: "0 24px 50px rgba(15,23,42,0.21)",
+  padding: "24px 26px 30px",
   display: "flex",
   flexDirection: "column",
-  gap: "24px",
+  gap: "20px",
+  margin: "0 auto",
 };
 
 const detailHeaderStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: "16px",
-  alignItems: "flex-start",
+  gap: "10px",
+  alignItems: "center",
   position: "relative",
 };
 
 const detailStageStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: "0.75rem",
-  letterSpacing: "0.08em",
+  fontSize: "0.66rem",
+  letterSpacing: "0.12em",
   color: ACCENT,
   textTransform: "uppercase",
-  fontWeight: 600,
+  fontWeight: 700,
 };
 
 const detailHeaderTextStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: "8px",
+  gap: "4px",
   flex: 1,
 };
 
 const detailTitleStyle: React.CSSProperties = {
-  margin: "4px 0 8px 0",
-  fontSize: "1.75rem",
+  margin: "0",
+  fontSize: "1.8rem",
   fontWeight: 700,
   color: TEXT,
-  lineHeight: 1.2,
-};
-
-const detailIdStyle: React.CSSProperties = {
-  fontSize: "0.75rem",
-  color: "#94a3b8",
-  margin: 0,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
+  lineHeight: 1.18,
 };
 
 const detailDescriptionStyle: React.CSSProperties = {
-  margin: 0,
+  margin: "2px 0 0 0",
   color: MUTED,
-  fontSize: "1rem",
-  lineHeight: 1.5,
+  fontSize: "0.95rem",
+  lineHeight: 1.48,
 };
 
 const detailBodyStyle: React.CSSProperties = {
@@ -682,8 +717,10 @@ const detailBodyStyle: React.CSSProperties = {
   flexDirection: "column",
   gap: "24px",
   overflowY: "auto",
-  paddingRight: "6px",
+  paddingRight: "8px",
   flex: 1,
+  scrollbarWidth: "thin",
+  scrollbarColor: "rgba(148, 163, 184, 0.8) transparent",
 };
 
 const detailCloseStyle: React.CSSProperties = {
@@ -710,7 +747,7 @@ const detailGalleryStyle: React.CSSProperties = {
   gap: "16px",
   backgroundColor: "#e0f2fe",
   borderRadius: "20px",
-  padding: "20px",
+  padding: "22px",
   boxShadow: "inset 0 0 0 1px rgba(14,165,233,0.08)",
 };
 
@@ -723,17 +760,17 @@ const heroImageWrapperStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   border: `1px solid ${BORDER}`,
-  padding: "12px",
+  padding: "8px 14px",
 };
 
 const detailHeroImageStyle: React.CSSProperties = {
   width: "100%",
   height: "auto",
-  maxHeight: "520px",
+  maxHeight: "680px",
   objectFit: "contain",
   display: "block",
   borderRadius: "12px",
-  boxShadow: "0 20px 40px rgba(15,23,42,0.18)",
+  boxShadow: "0 20px 44px rgba(15,23,42,0.2)",
 };
 
 const heroPlaceholderStyle: React.CSSProperties = {
@@ -748,12 +785,12 @@ const heroPlaceholderStyle: React.CSSProperties = {
 
 const galleryStripStyle: React.CSSProperties = {
   display: "flex",
-  gap: "12px",
+  gap: "14px",
 };
 
 const galleryThumbStyle: React.CSSProperties = {
-  width: "96px",
-  height: "96px",
+  width: "104px",
+  height: "104px",
   borderRadius: "16px",
   objectFit: "cover",
   boxShadow: "0 12px 24px rgba(15,23,42,0.18)",

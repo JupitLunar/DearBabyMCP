@@ -184,7 +184,7 @@ export function registerSolidStartTools({
 
       let response = await client.listRecipes(params);
       let candidates = response.data;
-      let strategy: "exact" | "relaxed" | "featuredFallback" = "exact";
+      let strategy: "exact" | "relaxed" | "ageAgnostic" | "featuredFallback" = "exact";
 
       if (!candidates.length && (params.search_query || params.food_type)) {
         const relaxedParams = {
@@ -204,9 +204,26 @@ export function registerSolidStartTools({
         strategy = "relaxed";
       }
 
+      if (!candidates.length && params.age_group) {
+        const ageAgnosticParams = {
+          limit: params.limit,
+          lang: params.lang,
+        };
+        logger.debug(
+          {
+            tool: "solidstart.recipes.search",
+            ageAgnosticParams,
+          },
+          "Still no matches, retrying without age group",
+        );
+        response = await client.listRecipes(ageAgnosticParams);
+        candidates = response.data;
+        strategy = "ageAgnostic";
+      }
+
       if (!candidates.length) {
         const featured = await client.getFeaturedRecipes({
-          age_group: params.age_group,
+          age_group: strategy === "ageAgnostic" ? undefined : params.age_group,
           limit: params.limit,
           lang: params.lang,
         });
@@ -475,7 +492,7 @@ function buildSearchSummary({
   mealType?: string;
   query?: string;
   excludedDueToAllergen: number;
-  strategy: "exact" | "relaxed" | "featuredFallback";
+  strategy: "exact" | "relaxed" | "ageAgnostic" | "featuredFallback";
 }): string {
   const parts: string[] = [];
 
