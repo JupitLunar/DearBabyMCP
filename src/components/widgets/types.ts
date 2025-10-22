@@ -38,6 +38,16 @@ export type RecipesToolOutput = {
   summary?: string;
   search_strategy?: string;
   params?: Record<string, unknown>;
+  language?: string;
+  filters?: {
+    language?: string;
+    stage?: string;
+    age_group?: string;
+    difficulty?: string;
+    max_total_time_minutes?: number;
+    max_cook_time_minutes?: number;
+    max_prep_time_minutes?: number;
+  };
   pagination?: {
     received: number;
     count: number;
@@ -51,6 +61,17 @@ export type RecipesToolOutput = {
 
 export type RecipeDetailToolOutput = {
   recipe: RecipeDetail;
+  nutrition?: {
+    calories_per_serving?: number | null;
+    servings?: number;
+    total_time_minutes?: number | null;
+    cook_time_minutes?: number | null;
+    prep_time_minutes?: number | null;
+    difficulty?: string | null;
+    allergens?: string[] | null;
+  };
+  tips?: string[];
+  language?: string;
 };
 
 export type DisplayMode = "inline" | "fullscreen" | "pip";

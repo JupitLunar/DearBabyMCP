@@ -23,6 +23,8 @@ const RecipeCarouselV4: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<RecipeDetail | null>(null);
+  const [detailNutrition, setDetailNutrition] = useState<RecipeDetailToolOutput["nutrition"]>();
+  const [detailTips, setDetailTips] = useState<string[] | undefined>();
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -43,6 +45,64 @@ const RecipeCarouselV4: React.FC = () => {
   }, []);
 
   const isCompact = viewportWidth < 960;
+
+  const activeLanguage = useMemo(() => {
+    const direct =
+      (toolOutput as { language?: unknown }).language &&
+      typeof (toolOutput as { language?: unknown }).language === "string"
+        ? ((toolOutput as { language?: unknown }).language as string)
+        : undefined;
+
+    if (direct) {
+      return direct;
+    }
+
+    if (toolOutput.params && typeof toolOutput.params === "object") {
+      const lang = (toolOutput.params as Record<string, unknown>).lang;
+      if (typeof lang === "string") {
+        return lang;
+      }
+    }
+
+    return undefined;
+  }, [toolOutput]);
+
+  const isEnglish = activeLanguage?.toLowerCase().startsWith("en") ?? false;
+
+  const filters = toolOutput.filters ?? {};
+
+  const filterChips = useMemo(() => {
+    const chips: string[] = [];
+
+    const stage = typeof filters.stage === "string" ? filters.stage : undefined;
+    if (stage) {
+      chips.push(isEnglish ? `Stage: ${stage}` : `阶段：${stage}`);
+    }
+
+    const difficulty = typeof filters.difficulty === "string" ? filters.difficulty : undefined;
+    if (difficulty) {
+      chips.push(
+        isEnglish ? `Difficulty: ${difficulty}` : `难度：${difficulty === "Easy" ? "简单" : difficulty}`,
+      );
+    }
+
+    const totalTime = filters.max_total_time_minutes as number | undefined;
+    if (typeof totalTime === "number") {
+      chips.push(isEnglish ? `Total ≤ ${totalTime} min` : `总时长 ≤ ${totalTime} 分钟`);
+    }
+
+    const cookTime = filters.max_cook_time_minutes as number | undefined;
+    if (typeof cookTime === "number") {
+      chips.push(isEnglish ? `Cook ≤ ${cookTime} min` : `烹饪 ≤ ${cookTime} 分钟`);
+    }
+
+    const prepTime = filters.max_prep_time_minutes as number | undefined;
+    if (typeof prepTime === "number") {
+      chips.push(isEnglish ? `Prep ≤ ${prepTime} min` : `准备 ≤ ${prepTime} 分钟`);
+    }
+
+    return chips;
+  }, [filters, isEnglish]);
 
   const detailContentLayoutStyle: React.CSSProperties = {
     display: "flex",
@@ -65,6 +125,217 @@ const RecipeCarouselV4: React.FC = () => {
     flexDirection: "column",
     gap: "20px",
   };
+
+  const formatMinutes = (value: number) =>
+    `${value} ${isEnglish ? "min" : "分钟"}`;
+  const formatServings = (value: number) =>
+    `${value} ${isEnglish ? "servings" : "份"}`;
+  const formatDifficultyLabel = (value?: string | null) => {
+    if (!value) return undefined;
+    const normalized = value.toLowerCase();
+    const capitalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    if (isEnglish) return capitalized;
+    if (normalized === "easy") return "简单";
+    if (normalized === "medium") return "中等";
+    if (normalized === "hard") return "困难";
+    return value;
+  };
+
+  const computeRecipeTotalTime = (recipe: RecipeSummary): number | undefined => {
+    if (recipe.total_time_minutes) return recipe.total_time_minutes;
+    const prep = recipe.prep_time_minutes ?? 0;
+    const cook = recipe.cook_time_minutes ?? 0;
+    const total = prep + cook;
+    return total > 0 ? total : undefined;
+  };
+
+  const buildRecipeMeta = (recipe: RecipeSummary) => {
+    const chips: Array<{ icon: string; text: string }> = [];
+    const totalTime = computeRecipeTotalTime(recipe);
+    if (typeof totalTime === "number") {
+      chips.push({ icon: "⏱", text: formatMinutes(totalTime) });
+    }
+    if (typeof recipe.servings === "number") {
+      chips.push({ icon: "🍽", text: formatServings(recipe.servings) });
+    }
+    const difficultyLabel = formatDifficultyLabel(recipe.difficulty_level ?? null);
+    if (difficultyLabel) {
+      chips.push({ icon: "⭐", text: difficultyLabel });
+    }
+    return chips;
+  };
+
+  const sectionTitle = (key: "ingredients" | "instructions" | "nutrition" | "tips") => {
+    if (isEnglish) {
+      switch (key) {
+        case "ingredients":
+          return "Ingredients";
+        case "instructions":
+          return "Instructions";
+        case "nutrition":
+          return "Nutrition";
+        case "tips":
+          return "Tips";
+        default:
+          return key;
+      }
+    }
+
+    switch (key) {
+      case "ingredients":
+        return "食材";
+      case "instructions":
+        return "步骤";
+      case "nutrition":
+        return "营养";
+      case "tips":
+        return "小贴士";
+      default:
+        return key;
+    }
+  };
+
+  const nutritionItems = useMemo(() => {
+    if (!detailNutrition) return [] as Array<{ label: string; value: string }>;
+    const items: Array<{ label: string; value: string }> = [];
+
+    if (detailNutrition.calories_per_serving != null) {
+      items.push({
+        label: isEnglish ? "Calories" : "热量",
+        value: `${detailNutrition.calories_per_serving} ${isEnglish ? "kcal" : "千卡"}`,
+      });
+    }
+
+    if (typeof detailNutrition.servings === "number") {
+      items.push({
+        label: isEnglish ? "Servings" : "份量",
+        value: `${detailNutrition.servings}`,
+      });
+    }
+
+    if (detailNutrition.total_time_minutes) {
+      items.push({
+        label: isEnglish ? "Total Time" : "总时长",
+        value: `${detailNutrition.total_time_minutes} ${isEnglish ? "min" : "分钟"}`,
+      });
+    }
+
+    if (detailNutrition.cook_time_minutes) {
+      items.push({
+        label: isEnglish ? "Cook" : "烹饪",
+        value: `${detailNutrition.cook_time_minutes} ${isEnglish ? "min" : "分钟"}`,
+      });
+    }
+
+    if (detailNutrition.prep_time_minutes) {
+      items.push({
+        label: isEnglish ? "Prep" : "准备",
+        value: `${detailNutrition.prep_time_minutes} ${isEnglish ? "min" : "分钟"}`,
+      });
+    }
+
+    if (detailNutrition.difficulty) {
+      const label =
+        detailNutrition.difficulty.charAt(0).toUpperCase() + detailNutrition.difficulty.slice(1);
+      items.push({
+        label: isEnglish ? "Difficulty" : "难度",
+        value: isEnglish ? label : label.replace("Easy", "简单").replace("Medium", "中等").replace("Hard", "困难"),
+      });
+    }
+
+    if (detailNutrition.allergens && detailNutrition.allergens.length) {
+      items.push({
+        label: isEnglish ? "Allergens" : "过敏原",
+        value: detailNutrition.allergens.join(isEnglish ? ", " : "、"),
+      });
+    }
+
+    return items;
+  }, [detailNutrition, isEnglish]);
+
+  const detailSections = useMemo(() => {
+    if (!detail) return [] as Array<{ key: string; title: string; content: React.ReactNode }>;
+
+    const sections: Array<{ key: string; title: string; content: React.ReactNode }> = [];
+
+    if (nutritionItems.length) {
+      sections.push({
+        key: "nutrition",
+        title: sectionTitle("nutrition"),
+        content: (
+          <ul style={nutritionListStyle}>
+            {nutritionItems.map((item) => (
+              <li key={item.label} style={nutritionListItemStyle}>
+                <span style={nutritionLabelStyle}>{item.label}</span>
+                <span>{item.value}</span>
+              </li>
+            ))}
+          </ul>
+        ),
+      });
+    }
+
+    sections.push({
+      key: "ingredients",
+      title: sectionTitle("ingredients"),
+      content: (
+        <ul style={detailListStyle}>
+          {detail.ingredients.map((item, index) => (
+            <li key={index}>{formatIngredient(item)}</li>
+          ))}
+        </ul>
+      ),
+    });
+
+    sections.push({
+      key: "instructions",
+      title: sectionTitle("instructions"),
+      content: (
+        <ol style={detailOrderedListStyle}>
+          {detail.instructions.map((step, index) => (
+            <li key={index} style={detailStepItemStyle}>
+              <span style={stepBadgeStyle}>{index + 1}</span>
+              <span style={detailStepTextStyle}>{step}</span>
+            </li>
+          ))}
+        </ol>
+      ),
+    });
+
+    if (detailTips && detailTips.length) {
+      sections.push({
+        key: "tips",
+        title: sectionTitle("tips"),
+        content: (
+          <ul style={tipsListStyle}>
+            {detailTips.map((tip, index) => (
+              <li key={index}>{tip}</li>
+            ))}
+          </ul>
+        ),
+      });
+    }
+
+    return sections;
+  }, [detail, detailTips, nutritionItems, isEnglish]);
+
+  const detailMetaChips = useMemo(() => {
+    if (!detail) return [] as Array<{ icon: string; text: string }>;
+    const chips: Array<{ icon: string; text: string }> = [];
+    const totalTime = detailNutrition?.total_time_minutes ?? computeRecipeTotalTime(detail);
+    if (typeof totalTime === "number") {
+      chips.push({ icon: "⏱", text: formatMinutes(totalTime) });
+    }
+    const servings = detailNutrition?.servings ?? detail.servings;
+    if (typeof servings === "number") {
+      chips.push({ icon: "🍽", text: formatServings(servings) });
+    }
+    const difficultyLabel = formatDifficultyLabel(detailNutrition?.difficulty ?? detail.difficulty_level);
+    if (difficultyLabel) {
+      chips.push({ icon: "⭐", text: difficultyLabel });
+    }
+    return chips;
+  }, [detail, detailNutrition, isEnglish]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -117,6 +388,12 @@ const RecipeCarouselV4: React.FC = () => {
     return pieces.length ? pieces.join(" · ") : "Adjust filters to discover more ideas.";
   }, [recipes.length, toolOutput.params, toolOutput.summary]);
 
+  const closeDetail = () => {
+    setDetail(null);
+    setDetailNutrition(undefined);
+    setDetailTips(undefined);
+  };
+
   const handleSelect = async (recipe: RecipeSummary) => {
     setSelectedId(recipe.id);
     setLoadingId(recipe.id);
@@ -125,13 +402,20 @@ const RecipeCarouselV4: React.FC = () => {
     try {
       const response = await window.openai?.callTool?.(
         "solidstart.recipes.getDetails",
-        { recipe_id: recipe.id },
+        {
+          recipe_id: recipe.id,
+          ...(typeof activeLanguage === "string" && activeLanguage.length > 0
+            ? { lang: activeLanguage }
+            : undefined),
+        },
       );
 
       const extracted = extractRecipeDetail(response);
 
       if (extracted && extracted.id) {
         setDetail(extracted);
+        setDetailNutrition(extractNutrition(response));
+        setDetailTips(extractTips(response));
       } else {
         setErrorMessage("无法加载食谱详情。返回的数据格式不正确。");
       }
@@ -147,8 +431,17 @@ const RecipeCarouselV4: React.FC = () => {
     <div style={containerStyle}>
       <header style={headerStyle}>
             <div>
-              <h2 style={headerTitleStyle}>宝宝辅食食谱</h2>
+              <h2 style={headerTitleStyle}>{isEnglish ? "Baby Recipes" : "宝宝辅食食谱"}</h2>
               <p style={headerSummaryStyle}>{summaryText}</p>
+              {filterChips.length ? (
+                <div style={filterBarStyle}>
+                  {filterChips.map((chip) => (
+                    <span key={chip} style={filterChipStyle}>
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
         {detail ? null : toolOutput.pagination ? (
           <p style={paginationStyle}>
@@ -216,11 +509,11 @@ const RecipeCarouselV4: React.FC = () => {
                   ) : null}
 
                   <div style={metaRowStyle}>
-                    {recipe.total_time_minutes ? (
-                      <span style={metaChipStyle}>⏱ {recipe.total_time_minutes} min</span>
-                    ) : null}
-                    {recipe.servings ? <span style={metaChipStyle}>🍽 {recipe.servings} servings</span> : null}
-                    {recipe.difficulty_level ? <span style={metaChipStyle}>⭐ {recipe.difficulty_level}</span> : null}
+                    {buildRecipeMeta(recipe).map((chip) => (
+                      <span key={`${recipe.id}-${chip.icon}-${chip.text}`} style={metaChipStyle}>
+                        {chip.icon} {chip.text}
+                      </span>
+                    ))}
                   </div>
 
                   {recipe.allergens && recipe.allergens.length ? (
@@ -265,7 +558,7 @@ const RecipeCarouselV4: React.FC = () => {
           aria-labelledby={detailTitleId}
           aria-describedby={detail.description ? detailDescriptionId : undefined}
           id="recipe-detail-dialog"
-          onClick={() => setDetail(null)}
+          onClick={closeDetail}
         >
           <div
             style={detailCardStyle}
@@ -287,7 +580,7 @@ const RecipeCarouselV4: React.FC = () => {
                 ref={closeButtonRef}
                 type="button"
                 style={detailCloseStyle}
-                onClick={() => setDetail(null)}
+                onClick={closeDetail}
               >
                 ✕
               </button>
@@ -334,35 +627,20 @@ const RecipeCarouselV4: React.FC = () => {
 
                 <div style={detailInfoColumnStyle}>
                   <div style={detailMetaRowStyle}>
-                    {detail.total_time_minutes ? (
-                      <span style={metaChipStyle}>⏱ {detail.total_time_minutes} min</span>
-                    ) : null}
-                    {detail.servings ? <span style={metaChipStyle}>🍽 {detail.servings} servings</span> : null}
-                    {detail.difficulty_level ? (
-                      <span style={metaChipStyle}>⭐ {detail.difficulty_level}</span>
-                    ) : null}
+                    {detailMetaChips.map((chip, index) => (
+                      <span key={`${chip.icon}-${index}`} style={metaChipStyle}>
+                        {chip.icon} {chip.text}
+                      </span>
+                    ))}
                   </div>
 
                   <section style={detailColumnsStyle}>
-                    <article style={detailColumnStyle}>
-                      <h3 style={detailColumnTitleStyle}>Ingredients</h3>
-                      <ul style={detailListStyle}>
-                        {detail.ingredients.map((item, index) => (
-                          <li key={index}>{formatIngredient(item)}</li>
-                        ))}
-                      </ul>
-                    </article>
-                    <article style={detailColumnStyle}>
-                      <h3 style={detailColumnTitleStyle}>Instructions</h3>
-                      <ol style={detailOrderedListStyle}>
-                        {detail.instructions.map((step, index) => (
-                          <li key={index} style={detailStepItemStyle}>
-                            <span style={stepBadgeStyle}>{index + 1}</span>
-                            <span style={detailStepTextStyle}>{step}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    </article>
+                    {detailSections.map((section) => (
+                      <article key={section.key} style={detailColumnStyle}>
+                        <h3 style={detailColumnTitleStyle}>{section.title}</h3>
+                        {section.content}
+                      </article>
+                    ))}
                   </section>
                 </div>
               </div>
@@ -401,6 +679,30 @@ function extractRecipeDetail(value: unknown): RecipeDetail | null {
   return null;
 }
 
+function extractNutrition(value: unknown): RecipeDetailToolOutput["nutrition"] | undefined {
+  if (!isRecord(value)) return undefined;
+  const sc = value["structuredContent"];
+  if (isRecord(sc) && sc["nutrition"] && typeof sc["nutrition"] === "object") {
+    return sc["nutrition"] as RecipeDetailToolOutput["nutrition"];
+  }
+  if (isRecord(value["nutrition"])) {
+    return value["nutrition"] as RecipeDetailToolOutput["nutrition"];
+  }
+  return undefined;
+}
+
+function extractTips(value: unknown): string[] | undefined {
+  if (!isRecord(value)) return undefined;
+  const sc = value["structuredContent"];
+  if (isRecord(sc) && Array.isArray(sc["tips"])) {
+    return sc["tips"] as string[];
+  }
+  if (Array.isArray(value["tips"])) {
+    return value["tips"] as string[];
+  }
+  return undefined;
+}
+
 const containerStyle: React.CSSProperties = {
   padding: "20px",
   display: "flex",
@@ -433,6 +735,24 @@ const headerSummaryStyle: React.CSSProperties = {
   fontSize: "0.9rem",
   color: MUTED,
   lineHeight: 1.4,
+};
+
+const filterBarStyle: React.CSSProperties = {
+  marginTop: "10px",
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "8px",
+};
+
+const filterChipStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  background: "rgba(14, 165, 233, 0.1)",
+  color: ACCENT,
+  fontSize: "0.75rem",
+  fontWeight: 600,
 };
 
 const paginationStyle: React.CSSProperties = {
@@ -836,6 +1156,27 @@ const detailColumnTitleStyle: React.CSSProperties = {
   color: TEXT,
 };
 
+const nutritionListStyle: React.CSSProperties = {
+  margin: 0,
+  padding: 0,
+  listStyle: "none",
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+  fontSize: "0.95rem",
+};
+
+const nutritionListItemStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  color: TEXT,
+};
+
+const nutritionLabelStyle: React.CSSProperties = {
+  color: MUTED,
+};
+
 const detailListStyle: React.CSSProperties = {
   margin: 0,
   paddingLeft: "20px",
@@ -885,6 +1226,16 @@ const stepBadgeStyle: React.CSSProperties = {
   fontSize: "0.85rem",
   flexShrink: 0,
   boxShadow: "0 8px 16px rgba(14,165,233,0.4)",
+};
+
+const tipsListStyle: React.CSSProperties = {
+  margin: 0,
+  paddingLeft: "20px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+  color: TEXT,
+  fontSize: "0.95rem",
 };
 
 function formatIngredient(item: Record<string, unknown>): string {

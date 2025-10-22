@@ -36,6 +36,12 @@ const SearchInputSchema = z
       .max(48)
       .optional()
       .describe("Baby age in months, used to pick an age stage."),
+    stage: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe("Stage label such as 'Stage 2' or '2'."),
     age_group: z
       .enum(["STAGE_1", "STAGE_2", "STAGE_3", "STAGE_4"])
       .optional()
@@ -57,6 +63,33 @@ const SearchInputSchema = z
       .min(1)
       .optional()
       .describe("Free text search query."),
+    difficulty: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe("Desired difficulty level (easy / medium / hard)."),
+    max_total_time_minutes: z
+      .number({ coerce: true })
+      .int()
+      .min(1)
+      .max(240)
+      .optional()
+      .describe("Limit the total time (prep + cook) in minutes."),
+    max_cook_time_minutes: z
+      .number({ coerce: true })
+      .int()
+      .min(1)
+      .max(240)
+      .optional()
+      .describe("Limit the cooking time in minutes."),
+    max_prep_time_minutes: z
+      .number({ coerce: true })
+      .int()
+      .min(1)
+      .max(240)
+      .optional()
+      .describe("Limit the prep time in minutes."),
     limit: z
       .number({ coerce: true })
       .int()
@@ -162,17 +195,33 @@ export function registerSolidStartTools({
     },
     async (rawInput) => {
       const input = SearchInputSchema.parse(rawInput ?? {});
-      const ageGroup =
-        input.age_group ?? deriveAgeGroupFromMonths(input.baby_age_months);
+
+      let ageGroup = input.age_group;
+      const normalizedStage =
+        !ageGroup && input.stage ? normalizeStageLabel(input.stage) : undefined;
+      if (!ageGroup && normalizedStage) {
+        ageGroup = normalizedStage;
+      }
+      if (!ageGroup) {
+        ageGroup = deriveAgeGroupFromMonths(input.baby_age_months);
+      }
+
+      const language =
+        input.lang ?? detectLanguagePreference(rawInput, [input.query, input.meal_type]) ?? "zh";
+
+      const difficultyFilter = normalizeDifficulty(input.difficulty);
+      const maxTotalTime = input.max_total_time_minutes;
+      const maxCookTime = input.max_cook_time_minutes;
+      const maxPrepTime = input.max_prep_time_minutes;
 
       const params = {
         age_group: ageGroup,
         food_type: input.meal_type,
         search_query: input.query,
-        limit: input.limit ?? DEFAULT_SEARCH_LIMIT,
-        offset: input.offset,
-        lang: input.lang,
-      };
+    limit: input.limit ?? DEFAULT_SEARCH_LIMIT,
+    offset: input.offset,
+    lang: language,
+  };
 
       logger.debug(
         { tool: "solidstart.recipes.search", params },
@@ -190,7 +239,7 @@ export function registerSolidStartTools({
         const relaxedParams = {
           age_group: params.age_group,
           limit: params.limit,
-          lang: params.lang,
+          lang: language,
         };
         logger.debug(
           {
@@ -207,7 +256,7 @@ export function registerSolidStartTools({
       if (!candidates.length && params.age_group) {
         const ageAgnosticParams = {
           limit: params.limit,
-          lang: params.lang,
+          lang: language,
         };
         logger.debug(
           {
@@ -225,7 +274,7 @@ export function registerSolidStartTools({
         const featured = await client.getFeaturedRecipes({
           age_group: strategy === "ageAgnostic" ? undefined : params.age_group,
           limit: params.limit,
-          lang: params.lang,
+          lang: language,
         });
         logger.debug(
           { tool: "solidstart.recipes.search", featuredCount: featured.data.length },
@@ -235,8 +284,26 @@ export function registerSolidStartTools({
         strategy = "featuredFallback";
       }
 
+      const filters = buildActiveFilters({
+        language,
+        ageGroup,
+        stage: normalizedStage,
+        difficulty: difficultyFilter,
+        maxTotalTime,
+        maxCookTime,
+        maxPrepTime,
+        allergens: allergensToAvoid,
+      });
+
       const filtered = candidates.filter((recipe) =>
-        shouldIncludeRecipe(recipe, allergensToAvoid),
+        shouldIncludeRecipe(recipe, allergensToAvoid) &&
+        matchesStage(recipe, normalizedStage) &&
+        matchesDifficulty(recipe, difficultyFilter) &&
+        matchesTime(recipe, {
+          maxTotalTime,
+          maxCookTime,
+          maxPrepTime,
+        }),
       );
 
       const excludedDueToAllergen = candidates.length - filtered.length;
@@ -248,6 +315,7 @@ export function registerSolidStartTools({
             ...input,
             age_group: ageGroup,
             limit: params.limit,
+            lang: language,
           },
           summary: buildSearchSummary({
             total: filtered.length,
@@ -256,6 +324,10 @@ export function registerSolidStartTools({
             query: input.query,
             excludedDueToAllergen,
             strategy,
+            difficulty: difficultyFilter,
+            maxTotalTime,
+            maxCookTime,
+            maxPrepTime,
           }),
           pagination: {
             received: candidates.length,
@@ -267,6 +339,8 @@ export function registerSolidStartTools({
           excluded_due_to_allergens: excludedDueToAllergen,
           recipes: filtered.map(toRecipeSummary),
           search_strategy: strategy,
+          language,
+          filters,
         },
       };
     },
@@ -295,10 +369,13 @@ export function registerSolidStartTools({
       const ageGroup =
         input.age_group ?? deriveAgeGroupFromMonths(input.baby_age_months);
 
+      const language =
+        input.lang ?? detectLanguagePreference(rawInput, [input.baby_age_months?.toString()]) ?? "zh";
+
       const params: FeaturedRecipesParams = {
         age_group: ageGroup,
         limit: input.limit ?? 10,
-        lang: input.lang,
+        lang: language,
       };
 
       logger.debug(
@@ -315,8 +392,10 @@ export function registerSolidStartTools({
             ...input,
             age_group: ageGroup,
             limit: params.limit,
+            lang: language,
           },
           recipes: response.data.map(toRecipeSummary),
+          language,
         },
       };
     },
@@ -348,15 +427,24 @@ export function registerSolidStartTools({
         "Fetching Solid Start recipe details",
       );
 
+      const detailLanguage =
+        input.lang ??
+        (typeof rawInput === "object" && rawInput && "lang" in (rawInput as Record<string, unknown>)
+          ? ((rawInput as Record<string, unknown>).lang as string | undefined)
+          : undefined);
+
       const recipe = await client.getRecipeDetails({
         recipeId: input.recipe_id,
-        lang: input.lang,
+        lang: detailLanguage,
       });
 
       return {
         content: [],
         structuredContent: {
           recipe: toRecipeDetail(recipe),
+          nutrition: buildNutrition(recipe),
+          tips: buildTips(recipe),
+          language: detailLanguage,
         },
       };
     },
@@ -463,6 +551,47 @@ function deriveAgeGroupFromMonths(
   return "STAGE_4";
 }
 
+function detectLanguagePreference(
+  rawInput: unknown,
+  candidateStrings: Array<string | undefined>,
+): "zh" | "en" | undefined {
+  const explicitLang =
+    typeof rawInput === "object" && rawInput && "lang" in (rawInput as Record<string, unknown>)
+      ? (rawInput as Record<string, unknown>).lang
+      : undefined;
+  if (typeof explicitLang === "string" && explicitLang.trim().length > 0) {
+    return normalizeLanguageCode(explicitLang);
+  }
+
+  const joined = candidateStrings.filter(Boolean).join(" ");
+  if (!joined) {
+    return undefined;
+  }
+
+  const hasCjk = /[\u3400-\u9FFF\uF900-\uFAFF]/.test(joined);
+  const hasLatin = /[A-Za-z]/.test(joined);
+
+  if (hasCjk && !hasLatin) {
+    return "zh";
+  }
+  if (hasLatin && !hasCjk) {
+    return "en";
+  }
+
+  return undefined;
+}
+
+function normalizeLanguageCode(code: string): "zh" | "en" | undefined {
+  const normalized = code.trim().toLowerCase();
+  if (normalized.startsWith("zh")) {
+    return "zh";
+  }
+  if (normalized.startsWith("en")) {
+    return "en";
+  }
+  return undefined;
+}
+
 function shouldIncludeRecipe(recipe: Recipe, allergens: string[]): boolean {
   if (allergens.length === 0) {
     return true;
@@ -486,6 +615,10 @@ function buildSearchSummary({
   query,
   excludedDueToAllergen,
   strategy,
+  difficulty,
+  maxTotalTime,
+  maxCookTime,
+  maxPrepTime,
 }: {
   total: number;
   ageGroup?: Recipe["age_group"];
@@ -493,6 +626,10 @@ function buildSearchSummary({
   query?: string;
   excludedDueToAllergen: number;
   strategy: "exact" | "relaxed" | "ageAgnostic" | "featuredFallback";
+  difficulty?: string | null;
+  maxTotalTime?: number;
+  maxCookTime?: number;
+  maxPrepTime?: number;
 }): string {
   const parts: string[] = [];
 
@@ -516,8 +653,26 @@ function buildSearchSummary({
     );
   }
 
+  if (difficulty) {
+    parts.push(`(difficulty: ${difficulty})`);
+  }
+
+  if (maxTotalTime) {
+    parts.push(`(total time ≤ ${maxTotalTime} min)`);
+  }
+
+  if (maxCookTime) {
+    parts.push(`(cook time ≤ ${maxCookTime} min)`);
+  }
+
+  if (maxPrepTime) {
+    parts.push(`(prep time ≤ ${maxPrepTime} min)`);
+  }
+
   if (strategy === "relaxed") {
     parts.push("(结果来自放宽筛选)");
+  } else if (strategy === "ageAgnostic") {
+    parts.push("(ignored age filter for broader results)");
   } else if (strategy === "featuredFallback") {
     parts.push("(展示推荐食谱)");
   }
@@ -565,4 +720,145 @@ function toRecipeDetail(recipe: Recipe) {
     status: recipe.status,
     dislikes_count: recipe.dislikes_count,
   };
+}
+
+function normalizeStageLabel(stage?: string): Recipe["age_group"] | undefined {
+  if (!stage) return undefined;
+  const trimmed = stage.trim().toUpperCase();
+  if (/^STAGE\s*1/.test(trimmed) || /^1\b/.test(trimmed)) return "STAGE_1";
+  if (/^STAGE\s*2/.test(trimmed) || /^2\b/.test(trimmed)) return "STAGE_2";
+  if (/^STAGE\s*3/.test(trimmed) || /^3\b/.test(trimmed)) return "STAGE_3";
+  if (/^STAGE\s*4/.test(trimmed) || /^4\b/.test(trimmed) || /11\+/.test(trimmed))
+    return "STAGE_4";
+  return undefined;
+}
+
+function normalizeDifficulty(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (["easy", "medium", "hard"].includes(normalized)) {
+    return normalized;
+  }
+  return normalized;
+}
+
+function matchesStage(recipe: Recipe, stage?: Recipe["age_group"]): boolean {
+  if (!stage) return true;
+  return recipe.age_group === stage;
+}
+
+function matchesDifficulty(recipe: Recipe, difficulty?: string): boolean {
+  if (!difficulty) return true;
+  if (!recipe.difficulty_level) return false;
+  return recipe.difficulty_level.toLowerCase() === difficulty;
+}
+
+function matchesTime(
+  recipe: Recipe,
+  options: {
+    maxTotalTime?: number;
+    maxCookTime?: number;
+    maxPrepTime?: number;
+  },
+): boolean {
+  const { maxTotalTime, maxCookTime, maxPrepTime } = options;
+  if (!maxTotalTime && !maxCookTime && !maxPrepTime) {
+    return true;
+  }
+
+  const totalTime = computeTotalTime(recipe);
+  if (maxTotalTime && totalTime && totalTime > maxTotalTime) {
+    return false;
+  }
+
+  if (maxCookTime && recipe.cook_time_minutes && recipe.cook_time_minutes > maxCookTime) {
+    return false;
+  }
+
+  if (maxPrepTime && recipe.prep_time_minutes && recipe.prep_time_minutes > maxPrepTime) {
+    return false;
+  }
+
+  return true;
+}
+
+function computeTotalTime(
+  recipe: Pick<Recipe, "prep_time_minutes" | "cook_time_minutes"> & {
+    total_time_minutes?: number | null;
+  },
+): number | undefined {
+  if (typeof recipe.total_time_minutes === "number") {
+    return recipe.total_time_minutes;
+  }
+  const prep = recipe.prep_time_minutes ?? 0;
+  const cook = recipe.cook_time_minutes ?? 0;
+  const total = prep + cook;
+  return total > 0 ? total : undefined;
+}
+
+function buildActiveFilters(options: {
+  language: string;
+  ageGroup?: Recipe["age_group"];
+  stage?: Recipe["age_group"];
+  difficulty?: string;
+  maxTotalTime?: number;
+  maxCookTime?: number;
+  maxPrepTime?: number;
+  allergens: string[];
+}) {
+  const {
+    language,
+    ageGroup,
+    stage,
+    difficulty,
+    maxTotalTime,
+    maxCookTime,
+    maxPrepTime,
+  } = options;
+
+  const stageLabel = stage ? AGE_GROUP_METADATA[stage]?.label ?? stage : undefined;
+  const difficultyLabel = difficulty
+    ? difficulty.charAt(0).toUpperCase() + difficulty.slice(1)
+    : undefined;
+
+  return {
+    language,
+    age_group: ageGroup,
+    stage: stageLabel,
+    difficulty: difficultyLabel,
+    max_total_time_minutes: maxTotalTime,
+    max_cook_time_minutes: maxCookTime,
+    max_prep_time_minutes: maxPrepTime,
+  };
+}
+
+function buildNutrition(recipe: Recipe) {
+  return {
+    calories_per_serving: recipe.calories_per_serving,
+    servings: recipe.servings,
+    total_time_minutes: computeTotalTime(recipe) ?? null,
+    cook_time_minutes: recipe.cook_time_minutes ?? null,
+    prep_time_minutes: recipe.prep_time_minutes ?? null,
+    difficulty: recipe.difficulty_level ?? null,
+    allergens: recipe.allergens ?? null,
+  };
+}
+
+function buildTips(recipe: Recipe): string[] {
+  const tips: string[] = [];
+
+  if (recipe.safety_notes && typeof recipe.safety_notes === "string") {
+    tips.push(recipe.safety_notes);
+  }
+
+  if (recipe.source === "manual") {
+    tips.push("Recipe curated by Dear Baby nutritionists.");
+  }
+
+  if (recipe.difficulty_level && recipe.difficulty_level.toLowerCase() === "easy") {
+    tips.push("Great for first-time cooks—minimal prep needed.");
+  }
+
+  return tips;
 }
